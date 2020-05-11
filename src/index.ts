@@ -6,6 +6,14 @@ import { IFileEntry, IPluginEntry, IReport } from './IReport';
 
 async function fileMD5(filePath: string): Promise<string> {
   const stackErr = new Error();
+  const updateErr = (err: Error) => {
+    err.stack = [].concat(
+      err.stack.split('\n').slice(0, 1),
+      stackErr.stack.split('\n').slice(1),
+    ).join('\n');
+    return err;
+  };
+
   return new Promise<string>((resolve, reject) => {
     try {
       const { createHash } = require('crypto');
@@ -20,12 +28,11 @@ async function fileMD5(filePath: string): Promise<string> {
         return resolve(hash.digest('hex'));
       });
       stream.on('error', (err) => {
-        err.stack = stackErr.stack;
-        reject(err);
+        reject(updateErr(err));
       });
     } catch (err) {
       err.stack = stackErr.stack;
-      reject(err);
+      reject(updateErr(err));
     }
   });
 }
@@ -58,23 +65,32 @@ async function fileReport(api: types.IExtensionApi,
       return prev;
     }, {});
 
+  const conlim = new util.ConcurrencyLimiter(100,
+    (err: Error) => err['code'] === 'EMFILE');
   return Promise.all(fileList
     .filter(entry => !entry.isDirectory)
     .map(async (entry: IEntry): Promise<IFileEntry> => {
       const relPath = path.relative(modPath, entry.filePath);
       const manifestEntry = manifestLookup[relPath.toUpperCase()];
       let md5sum: string;
+      let errCode: string;
       try {
-        md5sum = await fileMD5(path.join(deployTarget, manifestEntry.relPath));
+        md5sum = await conlim.do(async () =>
+          fileMD5(path.join(deployTarget, manifestEntry.relPath)));
       } catch (err) {
         md5sum = null;
+        errCode = err.code;
       }
-      return {
+      const res: IFileEntry = {
         path: path.relative(modPath, entry.filePath),
         deployed: manifestEntry !== undefined,
         overwrittenBy: manifestEntry?.source === mod.id ? null : manifestEntry?.source,
         md5sum,
       };
+      if (errCode !== undefined) {
+        res.error = errCode;
+      }
+      return res;
     }));
 }
 
@@ -124,7 +140,7 @@ async function createReportImpl(api: types.IExtensionApi, modId: string) {
 
   const result: Partial<IReport> = {
     info: {
-      creation: Date.now() / 1000,
+      creation: Date.now(),
     },
     mod: {
       md5sum: mod.attributes?.fileMD5 || 'N/A',
@@ -163,23 +179,34 @@ async function createReportImpl(api: types.IExtensionApi, modId: string) {
 
 function formatReport(input: Partial<IReport>): string {
   const divider = '*'.repeat(50);
-  const shortDivider = '*'.repeat(20);
   const deployedFilter = (file: IFileEntry) =>
     file.deployed && (file.md5sum !== null) && (file.overwrittenBy === null);
   const overwrittenFilter = (file: IFileEntry) =>
     file.deployed && (file.md5sum !== null) && file.overwrittenBy !== null;
   const missingFilter = (file: IFileEntry) =>
-    file.deployed && (file.md5sum === null);
+    file.deployed && (file.md5sum === null) && (file.error === 'ENOENT');
+  const errorFilter = (file: IFileEntry) =>
+    file.deployed && (file.md5sum === null) && (file.error !== 'ENOENT');
   const undeployedFilter = (file: IFileEntry) => !file.deployed;
+
+  const fileList = (filter: (file: IFileEntry) => boolean, print: (file: IFileEntry) => string) => {
+    const filtered = input.files.filter(filter);
+    if (filtered.length > 0) {
+      return filtered.map(print);
+    } else {
+      return ['<None>'];
+    }
+  };
+
   let res = [
     divider,
-    `* Mod installation report (created on ${new Date(input.info.creation * 1000).toUTCString()})`,
+    `* Mod installation report (created on ${new Date(input.info.creation).toUTCString()})`,
     `* Mod name: ${input.mod.name}`,
     `* Version: ${input.mod.version}`,
     `* Archive: ${input.mod.archiveName}`,
     `* MD5 checksum: ${input.mod.md5sum}`,
     `* Download source: ${input.mod.source} (mod ${input.mod.modId}, file ${input.mod.fileId})`,
-    `* Last deployment: ${input.mod.deploymentTime === 0 ? 'Unkown' : new Date(input.mod.deploymentTime * 1000).toUTCString()}`,
+    `* Last deployment: ${input.mod.deploymentTime === 0 ? 'Unknown' : new Date(input.mod.deploymentTime).toUTCString()}`,
     `* Deployment method: ${input.mod.deploymentMethod}`,
     `* Mod type: ${input.mod.modType}`,
     divider,
@@ -187,22 +214,27 @@ function formatReport(input: Partial<IReport>): string {
     divider,
     `* Deployed files:`,
     divider,
-    ...input.files.filter(deployedFilter).map(file => `${file.path} (${file.md5sum})`),
+    ...fileList(deployedFilter, file => `${file.path} (${file.md5sum})`),
     '',
     divider,
     `* Files overwritten by other mod:`,
     divider,
-    ...input.files.filter(overwrittenFilter).map(file => `${file.path} (${file.md5sum}) - ${file.overwrittenBy}`),
+    ...fileList(overwrittenFilter, file => `${file.path} (${file.md5sum}) - ${file.overwrittenBy}`),
     '',
     divider,
     `* Files not deployed:`,
     divider,
-    ...input.files.filter(undeployedFilter).map(file => `${file.path}`),
+    ...fileList(undeployedFilter, file => `${file.path}`),
     '',
     divider,
     `* Files that are supposed to be deployed but weren't found:`,
     divider,
-    ...input.files.filter(missingFilter).map(file => `${file.path}`),
+    ...fileList(missingFilter, file => `${file.path}`),
+    '',
+    divider,
+    `* Files that are present but couldn't be read:`,
+    divider,
+    ...fileList(errorFilter, file => `${file.path} (${file.error})`),
   ];
 
   if (input.loadOrder !== undefined) {
@@ -212,7 +244,10 @@ function formatReport(input: Partial<IReport>): string {
       divider,
       `* Plugins`,
       divider,
-      ...input.plugins.map(plugin => `${plugin.name} - ${plugin.enabled ? 'Enabled' : 'Disabled'}`),
+      ...(input.plugins.length === 0
+        ? ['<None>']
+        : input.plugins.map(plugin =>
+            `${plugin.name} (${plugin.enabled ? 'Enabled' : 'Disabled'})`)),
       '',
       divider,
       `* Load order`,
@@ -255,7 +290,7 @@ async function createReport(api: types.IExtensionApi, modId: string) {
 }
 
 function init(context: types.IExtensionContext) {
-  context.registerAction('mods-action-icons', 150, 'smart', {}, 'Create Report',
+  context.registerAction('mods-action-icons', 250, 'report', {}, 'Create Report',
     (instanceIds: string[]) => {
       createReport(context.api, instanceIds[0]);
     });

@@ -20,6 +20,7 @@ export interface IFileEntry {
   deployed: boolean;
   overwrittenBy: string;
   md5sum: string;
+  error?: string;
 }
 
 export interface IPluginEntry {
