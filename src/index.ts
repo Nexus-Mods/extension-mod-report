@@ -126,17 +126,16 @@ function isBethesdaGame(gameId: string): boolean {
   ].includes(gameId);
 }
 
-async function createReportImpl(api: types.IExtensionApi, modId: string) {
+async function createReportImpl(api: types.IExtensionApi, gameId: string, modId: string) {
   const state = api.getState();
-  const gameMode = selectors.activeGameId(state);
-  const mod = state.persistent.mods[gameMode]?.[modId];
+  const mod = state.persistent.mods[gameId]?.[modId];
   if (mod === undefined) {
     throw new util.ProcessCanceled('invalid mod id');
   }
 
   const download = state.persistent.downloads.files[mod.archiveId];
 
-  const manifest: types.IDeploymentManifest = await util.getManifest(api, mod.type, gameMode);
+  const manifest: types.IDeploymentManifest = await util.getManifest(api, mod.type, gameId);
 
   const result: Partial<IReport> = {
     info: {
@@ -161,13 +160,13 @@ async function createReportImpl(api: types.IExtensionApi, modId: string) {
     result.installerChoices = mod.attributes?.installerChoices;
   }
 
-  const stagingPath = selectors.installPathForGame(state, gameMode);
+  const stagingPath = selectors.installPathForGame(state, gameId);
   const fileList = await listFiles(path.join(stagingPath, mod.installationPath));
 
-  result.files = await fileReport(api, gameMode, mod, fileList, manifest);
+  result.files = await fileReport(api, gameId, mod, fileList, manifest);
 
-  if (isBethesdaGame(gameMode)) {
-    result.plugins = await pluginReport(api, gameMode, mod, fileList);
+  if (isBethesdaGame(gameId)) {
+    result.plugins = await pluginReport(api, gameId, mod, fileList);
     const loadOrder = (state as any).loadOrder;
     result.loadOrder = Object.keys(loadOrder)
       .filter(entry => loadOrder[entry].enabled)
@@ -266,12 +265,15 @@ async function createReport(api: types.IExtensionApi, modId: string) {
       type: 'activity',
       message: 'Creating report...',
     });
-    const report = await createReportImpl(api, modId);
+    const state = api.getState();
+    const gameMode = selectors.activeGameId(state);
+    const report = await createReportImpl(api, gameMode, modId);
     clipboard.writeText(formatReport(report));
     api.sendNotification({
       id: 'mod-report-creation',
       type: 'success',
-      message: 'Report created',
+      title: 'Report created',
+      message: util.renderModName(state.persistent.mods[gameMode][modId]),
       actions: [
         { title: 'Copy readable', action: () => {
           clipboard.writeText(formatReport(report)); } },
