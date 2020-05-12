@@ -2,6 +2,8 @@ import { clipboard } from 'electron';
 import * as path from 'path';
 import turbowalk, { IEntry } from 'turbowalk';
 import { fs, log, selectors, types, util } from 'vortex-api';
+import binUpload from './binupload';
+import format, { FormatterMarkdown, FormatterReadable } from './format';
 import { IFileEntry, IPluginEntry, IReport } from './IReport';
 
 async function fileMD5(filePath: string): Promise<string> {
@@ -126,7 +128,9 @@ function isBethesdaGame(gameId: string): boolean {
   ].includes(gameId);
 }
 
-async function createReportImpl(api: types.IExtensionApi, gameId: string, modId: string) {
+async function createReportImpl(api: types.IExtensionApi,
+                                gameId: string,
+                                modId: string): Promise<IReport> {
   const state = api.getState();
   const mod = state.persistent.mods[gameId]?.[modId];
   if (mod === undefined) {
@@ -142,12 +146,14 @@ async function createReportImpl(api: types.IExtensionApi, gameId: string, modId:
       creation: Date.now(),
     },
     mod: {
+      name: util.renderModName(mod),
+      version: mod.attributes?.version || 'N/A',
       md5sum: mod.attributes?.fileMD5 || 'N/A',
       archiveName: download?.localPath || 'N/A',
-      name: mod.attributes?.name || 'N/A',
+      managedGame: gameId,
+      intendedGame: download.game.join(', '),
       deploymentMethod: manifest.deploymentMethod || 'N/A',
       deploymentTime: (manifest as any).deploymentTime || 0,
-      version: mod.attributes?.version || 'N/A',
       modType: mod.type || 'default',
       source: mod.attributes?.source || 'N/A',
       modId: mod.attributes?.modId || 'N/A',
@@ -173,89 +179,7 @@ async function createReportImpl(api: types.IExtensionApi, gameId: string, modId:
       .sort((lhs, rhs) => loadOrder[lhs].loadOrder - loadOrder[rhs].loadOrder);
   }
 
-  return result;
-}
-
-function formatReport(input: Partial<IReport>): string {
-  const divider = '*'.repeat(50);
-  const deployedFilter = (file: IFileEntry) =>
-    file.deployed && (file.md5sum !== null) && (file.overwrittenBy === null);
-  const overwrittenFilter = (file: IFileEntry) =>
-    file.deployed && (file.md5sum !== null) && file.overwrittenBy !== null;
-  const missingFilter = (file: IFileEntry) =>
-    file.deployed && (file.md5sum === null) && (file.error === 'ENOENT');
-  const errorFilter = (file: IFileEntry) =>
-    file.deployed && (file.md5sum === null) && (file.error !== 'ENOENT');
-  const undeployedFilter = (file: IFileEntry) => !file.deployed;
-
-  const fileList = (filter: (file: IFileEntry) => boolean, print: (file: IFileEntry) => string) => {
-    const filtered = input.files.filter(filter);
-    if (filtered.length > 0) {
-      return filtered.map(print);
-    } else {
-      return ['<None>'];
-    }
-  };
-
-  let res = [
-    divider,
-    `* Mod installation report (created on ${new Date(input.info.creation).toUTCString()})`,
-    `* Mod name: ${input.mod.name}`,
-    `* Version: ${input.mod.version}`,
-    `* Archive: ${input.mod.archiveName}`,
-    `* MD5 checksum: ${input.mod.md5sum}`,
-    `* Download source: ${input.mod.source} (mod ${input.mod.modId}, file ${input.mod.fileId})`,
-    `* Last deployment: ${input.mod.deploymentTime === 0 ? 'Unknown' : new Date(input.mod.deploymentTime).toUTCString()}`,
-    `* Deployment method: ${input.mod.deploymentMethod}`,
-    `* Mod type: ${input.mod.modType}`,
-    divider,
-    '',
-    divider,
-    `* Deployed files:`,
-    divider,
-    ...fileList(deployedFilter, file => `${file.path} (${file.md5sum})`),
-    '',
-    divider,
-    `* Files overwritten by other mod:`,
-    divider,
-    ...fileList(overwrittenFilter, file => `${file.path} (${file.md5sum}) - ${file.overwrittenBy}`),
-    '',
-    divider,
-    `* Files not deployed:`,
-    divider,
-    ...fileList(undeployedFilter, file => `${file.path}`),
-    '',
-    divider,
-    `* Files that are supposed to be deployed but weren't found:`,
-    divider,
-    ...fileList(missingFilter, file => `${file.path}`),
-    '',
-    divider,
-    `* Files that are present but couldn't be read:`,
-    divider,
-    ...fileList(errorFilter, file => `${file.path} (${file.error})`),
-  ];
-
-  if (input.loadOrder !== undefined) {
-    const ownedPlugins = new Set(input.plugins.map(plugin => plugin.name.toLowerCase()));
-    res = res.concat([
-      '',
-      divider,
-      `* Plugins`,
-      divider,
-      ...(input.plugins.length === 0
-        ? ['<None>']
-        : input.plugins.map(plugin =>
-            `${plugin.name} (${plugin.enabled ? 'Enabled' : 'Disabled'})`)),
-      '',
-      divider,
-      `* Load order`,
-      divider,
-      ...input.loadOrder.map(plugin => ownedPlugins.has(plugin) ? `+ ${plugin}` : `  ${plugin}`),
-    ]);
-  }
-
-  return res.join('\n');
+  return result as IReport;
 }
 
 async function createReport(api: types.IExtensionApi, modId: string) {
@@ -268,17 +192,39 @@ async function createReport(api: types.IExtensionApi, modId: string) {
     const state = api.getState();
     const gameMode = selectors.activeGameId(state);
     const report = await createReportImpl(api, gameMode, modId);
-    clipboard.writeText(formatReport(report));
     api.sendNotification({
       id: 'mod-report-creation',
       type: 'success',
       title: 'Report created',
       message: util.renderModName(state.persistent.mods[gameMode][modId]),
       actions: [
-        { title: 'Copy readable', action: () => {
-          clipboard.writeText(formatReport(report)); } },
-        { title: 'Copy json', action: () => {
-          clipboard.writeText(JSON.stringify(report, undefined, 2)); } },
+        {
+          title: 'Save to file', action: async () => {
+            const time = Math.floor(Date.now() / 1000);
+            const tmpPath = path.join(util.getVortexPath('temp'), `mod-report-${time}.txt`);
+            const formatted = format(new FormatterReadable(), report);
+            await fs.writeFileAsync(tmpPath, formatted);
+            util.opn(tmpPath).catch(() => null);
+          },
+        },
+        {
+          title: 'Share', action: async () => {
+            try {
+              const { id, url } = await binUpload(report);
+              api.showDialog('success', 'Report uploaded', {
+                bbcode: 'Report has been uploaded. '
+                    + 'You can share this link with people trying to help you.<br/>'
+                    + '[color=red]If you lose this link you will have to recreate the report.[/color]<br/><br/>',
+                message: url,
+              }, [
+                { label: 'Open Report', action: () => util.opn(url).catch(() => null) },
+                { label: 'Copy Link', action: () => clipboard.writeText(url) },
+              ]);
+            } catch (err) {
+              api.showErrorNotification('Failed to upload report', err);
+            }
+          },
+        },
       ],
     });
   } catch (err) {

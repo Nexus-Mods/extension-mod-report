@@ -13,6 +13,8 @@ export interface IModMetaInfo {
   source: string;
   modId: string;
   fileId: string;
+  managedGame: string;
+  intendedGame: string;
 }
 
 export interface IFileEntry {
