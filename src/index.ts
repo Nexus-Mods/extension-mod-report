@@ -6,6 +6,8 @@ import binUpload from './binupload';
 import format, { FormatterMarkdown, FormatterReadable } from './format';
 import { IFileEntry, IPluginEntry, IReport } from './IReport';
 
+const WARN_CHECKSUM_FILES = 100;
+
 const PROGRESS_NOTIFICATION: types.INotification = {
   id: 'mod-report-creation',
   type: 'activity',
@@ -202,7 +204,7 @@ async function createReportImpl(api: types.IExtensionApi,
   const fileList = await listFiles(path.join(stagingPath, mod.installationPath));
 
   let generateMD5: boolean = true;
-  if (fileList.length > 1000) {
+  if (fileList.length > WARN_CHECKSUM_FILES) {
     const dialogResult: types.IDialogResult = await api.showDialog('question', 'Large number of files', {
       text: 'This mod contains a large number of files, calculating checksums for each '
           + 'may take a while, but without them the report is slightly less useful.',
@@ -263,7 +265,6 @@ async function createReport(api: types.IExtensionApi, modId: string) {
       actions: [
         {
           title: 'Save to file', action: async () => {
-            const time = Math.floor(Date.now() / 1000);
             const modReportsPath = path.join(util.getVortexPath('temp'), 'mod reports');
             await fs.ensureDirWritableAsync(modReportsPath, () => Promise.resolve());
             const tmpPath = path.join(modReportsPath, `${modName}__${formatTime(timestamp)}.txt`);
