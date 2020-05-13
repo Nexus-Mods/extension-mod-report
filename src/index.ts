@@ -6,6 +6,14 @@ import binUpload from './binupload';
 import format, { FormatterMarkdown, FormatterReadable } from './format';
 import { IFileEntry, IPluginEntry, IReport } from './IReport';
 
+const PROGRESS_NOTIFICATION: types.INotification = {
+  id: 'mod-report-creation',
+  type: 'activity',
+  title: 'Creating report...',
+  message: '',
+  progress: 0,
+};
+
 async function fileMD5(filePath: string): Promise<string> {
   const stackErr = new Error();
   const updateErr = (err: Error) => {
@@ -51,7 +59,8 @@ async function fileReport(api: types.IExtensionApi,
                           gameId: string,
                           mod: types.IMod,
                           fileList: IEntry[],
-                          manifest: types.IDeploymentManifest)
+                          manifest: types.IDeploymentManifest,
+                          generateMD5: boolean)
                           : Promise<IFileEntry[]> {
   const state = api.getState();
   const stagingPath = selectors.installPathForGame(state, gameId);
@@ -67,18 +76,40 @@ async function fileReport(api: types.IExtensionApi,
       return prev;
     }, {});
 
+  const fileListFiles = fileList.filter(entry => !entry.isDirectory);
+
+  let completed: number = 0;
+  let lastPerc: number = 0;
+  const modName = util.renderModName(mod);
+  const onCompleted = () => {
+    ++completed;
+    const newPerc = Math.floor((completed * 100) / fileListFiles.length);
+    if (newPerc !== lastPerc) {
+      api.sendNotification({
+        ...PROGRESS_NOTIFICATION,
+        id: `mod-report-creation-${mod.id}`,
+        message: modName,
+        progress: newPerc,
+      });
+      lastPerc = newPerc;
+    }
+  };
+
   const conlim = new util.ConcurrencyLimiter(100,
     (err: Error) => err['code'] === 'EMFILE');
-  return Promise.all(fileList
-    .filter(entry => !entry.isDirectory)
+  return Promise.all(fileListFiles
     .map(async (entry: IEntry): Promise<IFileEntry> => {
       const relPath = path.relative(modPath, entry.filePath);
       const manifestEntry = manifestLookup[relPath.toUpperCase()];
       let md5sum: string;
       let errCode: string;
       try {
-        md5sum = await conlim.do(async () =>
-          fileMD5(path.join(deployTarget, manifestEntry.relPath)));
+        if (generateMD5) {
+          md5sum = await conlim.do(async () =>
+            fileMD5(path.join(deployTarget, manifestEntry.relPath)));
+        } else {
+          md5sum = 'Not calculated';
+        }
       } catch (err) {
         md5sum = null;
         errCode = err.code;
@@ -92,6 +123,7 @@ async function fileReport(api: types.IExtensionApi,
       if (errCode !== undefined) {
         res.error = errCode;
       }
+      onCompleted();
       return res;
     }));
 }
@@ -169,7 +201,24 @@ async function createReportImpl(api: types.IExtensionApi,
   const stagingPath = selectors.installPathForGame(state, gameId);
   const fileList = await listFiles(path.join(stagingPath, mod.installationPath));
 
-  result.files = await fileReport(api, gameId, mod, fileList, manifest);
+  let generateMD5: boolean = true;
+  if (fileList.length > 1000) {
+    const dialogResult: types.IDialogResult = await api.showDialog('question', 'Large number of files', {
+      text: 'This mod contains a large number of files, calculating checksums for each '
+          + 'may take a while, but without them the report is slightly less useful.',
+      checkboxes: [
+        { id: 'checksums', value: true, text: 'Generate checksums' },
+      ],
+    }, [
+      { label: 'Continue' },
+    ]);
+
+    if (!dialogResult.input['checksums']) {
+      generateMD5 = false;
+    }
+  }
+
+  result.files = await fileReport(api, gameId, mod, fileList, manifest, generateMD5);
 
   if (isBethesdaGame(gameId)) {
     result.plugins = await pluginReport(api, gameId, mod, fileList);
@@ -182,29 +231,45 @@ async function createReportImpl(api: types.IExtensionApi,
   return result as IReport;
 }
 
+function formatTime(input: Date): string {
+  return [
+    input.getFullYear(),
+    util.pad(input.getMonth(), '0', 2),
+    util.pad(input.getDay(), '0', 2),
+    util.pad(input.getHours(), '0', 2),
+    util.pad(input.getMinutes(), '0', 2),
+  ].join('-');
+}
+
 async function createReport(api: types.IExtensionApi, modId: string) {
   try {
-    api.sendNotification({
-      id: 'mod-report-creation',
-      type: 'activity',
-      message: 'Creating report...',
-    });
     const state = api.getState();
     const gameMode = selectors.activeGameId(state);
-    const report = await createReportImpl(api, gameMode, modId);
+    const mod = state.persistent.mods[gameMode][modId];
+    const modName = util.renderModName(mod);
     api.sendNotification({
-      id: 'mod-report-creation',
+      ...PROGRESS_NOTIFICATION,
+      id: `mod-report-creation-${modId}`,
+      message: modName,
+      progress: 0,
+    });
+    const report = await createReportImpl(api, gameMode, modId);
+    const timestamp = new Date();
+    api.sendNotification({
+      id: `mod-report-creation-${modId}`,
       type: 'success',
       title: 'Report created',
-      message: util.renderModName(state.persistent.mods[gameMode][modId]),
+      message: modName,
       actions: [
         {
           title: 'Save to file', action: async () => {
             const time = Math.floor(Date.now() / 1000);
-            const tmpPath = path.join(util.getVortexPath('temp'), `mod-report-${time}.txt`);
+            const modReportsPath = path.join(util.getVortexPath('temp'), 'mod reports');
+            await fs.ensureDirWritableAsync(modReportsPath, () => Promise.resolve());
+            const tmpPath = path.join(modReportsPath, `${modName}__${formatTime(timestamp)}.txt`);
             const formatted = format(new FormatterReadable(), report);
             await fs.writeFileAsync(tmpPath, formatted);
-            util.opn(tmpPath).catch(() => null);
+            util.opn(modReportsPath).catch(() => null);
           },
         },
         {
