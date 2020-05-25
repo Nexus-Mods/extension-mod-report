@@ -307,6 +307,10 @@ function init(context: types.IExtensionContext) {
   context.registerAction('mods-action-icons', 250, 'report', {}, 'Create Report',
     (instanceIds: string[]) => {
       createReport(context.api, instanceIds[0]);
+    }, (instanceIds: string[]) => {
+      const state = context.api.getState();
+      const gameMode = selectors.activeGameId(state);
+      return state.persistent.mods[gameMode]?.[instanceIds[0]] !== undefined;
     });
 }
 
