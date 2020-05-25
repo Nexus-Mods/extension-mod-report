@@ -7,7 +7,7 @@ import { deflateRaw } from 'zlib';
 import format, { FormatterMarkdown } from './format';
 import { IReport } from './IReport';
 
-const PRIVATEBIN_HOST = 'vim.cx';
+const PRIVATEBIN_HOST = 'privatebin.nexusmods.com';
 
 type Encryption = 'aes';
 type EncryptionMode = 'ctr' | 'cbc' | 'gcm';
