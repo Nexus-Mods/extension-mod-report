@@ -29,9 +29,5 @@ jobs:
       with:
         python-version: 3.8
         architecture: x64
-    - uses: Borales/actions-yarn@v2.1.0
-      with:
-        cmd: install
-    - uses: Borales/actions-yarn@v2.1.0
-      with:
-        cmd: build
+    - run: npm install
+    - run: npm run build
