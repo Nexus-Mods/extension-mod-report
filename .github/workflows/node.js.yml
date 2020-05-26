@@ -31,3 +31,12 @@ jobs:
         architecture: x64
     - run: npm install
     - run: npm run build
+    - name: Build archive
+      uses: DuckSoft/create-7z-action@v1.0
+      with:
+        pathSource: dist/*
+        pathTarget: mod-report.7z
+    - name: Upload artifact
+      uses: actions/upload-artifact@v2
+      with:
+        path: mod-report.7z
