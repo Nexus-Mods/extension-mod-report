@@ -31,11 +31,18 @@ export interface IPluginEntry {
   loadOrder: number;
 }
 
+export interface ILoadOrderEntry {
+  name: string;
+  enabled: boolean;
+  locked?: boolean;
+  external?: boolean;
+}
+
 export interface IReport {
   info: IMetaInfo;
   mod: IModMetaInfo;
   installerChoices: any;
   files: IFileEntry[];
   plugins?: IPluginEntry[];
-  loadOrder?: string[];
+  loadOrder?: ILoadOrderEntry[];
 }

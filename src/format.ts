@@ -166,12 +166,27 @@ function format(formatter: IFormatter, input: IReport): string {
   ];
 
   if (input.loadOrder !== undefined) {
-    const ownedPlugins = new Set(input.plugins.map(plugin => plugin.name.toLowerCase()));
-    lines.push(formatter.section('Plugins',
-      input.plugins.map(plugin => `${formatter.code(plugin.name)} (${plugin.enabled ? 'Enabled' : 'Disabled'})`)));
-    lines.push(formatter.section('Load order', formatter.preformatted(
-      input.loadOrder.map(plugin => ownedPlugins.has(plugin) ? `+ ${plugin}` : `  ${plugin}`).join('\n'),
-    )));
+    if (input.plugins !== undefined) {
+      // Gamebryo game.
+      const ownedPlugins = new Set(input.plugins.map(plugin => plugin.name.toLowerCase()));
+      lines.push(formatter.section('Plugins',
+        input.plugins.map(plugin => `${formatter.code(plugin.name)} (${plugin.enabled ? 'Enabled' : 'Disabled'})`)));
+      lines.push(formatter.section('Load order', formatter.preformatted(
+        input.loadOrder.map(plugin => ownedPlugins.has(plugin.name) ? `+ ${plugin.name}` : `  ${plugin.name}`).join('\n'),
+      )));
+    } else {
+      // Any game with a defined Load order, is probably using the generic LO extension
+      const entryToLine = (entry) => {
+        const enabled = entry.enabled ? 'Enabled' : 'Disabled';
+        const locked = !!entry?.locked ? 'Locked' : 'Unlocked';
+        const external = !!entry?.external ? 'External' : '';
+        return `${entry.name} (${enabled}/${locked}) ${external}`;
+      };
+      lines.push(formatter.section('Load order', formatter.preformatted(
+        input.loadOrder.map((loEntry, idx) => (input.mod.archiveName.indexOf(loEntry.name) !== -1)
+          ? `+ ${idx} ${entryToLine(loEntry)}` : `  ${idx} ${entryToLine(loEntry)}`).join('\n'),
+      )));
+    }
   }
 
   return formatter.lines(lines);

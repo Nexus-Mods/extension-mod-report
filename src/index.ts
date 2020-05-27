@@ -227,7 +227,24 @@ async function createReportImpl(api: types.IExtensionApi,
     const loadOrder = (state as any).loadOrder;
     result.loadOrder = Object.keys(loadOrder)
       .filter(entry => loadOrder[entry].enabled)
-      .sort((lhs, rhs) => loadOrder[lhs].loadOrder - loadOrder[rhs].loadOrder);
+      .sort((lhs, rhs) => loadOrder[lhs].loadOrder - loadOrder[rhs].loadOrder)
+      .map(entry => ({ name: entry, enabled: true }));
+  } else {
+    const profile: types.IProfile = selectors.activeProfile(state);
+    const loadOrder = util.getSafe(state, ['persistent', 'loadOrder', profile.id], undefined);
+    if (!!loadOrder) {
+      result.loadOrder = Object.keys(loadOrder)
+        .sort((lhs, rhs) => loadOrder[lhs].pos - loadOrder[rhs].pos)
+        .map(entry => ({
+          name: entry,
+          // KCD and Spyro (probably others too) do not include the
+          //  enabled property; in their case, merely their presence in the LO
+          //  suggests that the mod is enabled.
+          enabled: loadOrder[entry]?.enabled || true,
+          locked: loadOrder[entry]?.locked,
+          external: loadOrder[entry]?.external,
+        }));
+    }
   }
 
   return result as IReport;
