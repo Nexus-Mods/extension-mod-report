@@ -51,9 +51,17 @@ async function fileMD5(filePath: string): Promise<string> {
 
 async function listFiles(modPath: string): Promise<IEntry[]> {
   let result: IEntry[] = [];
-  await turbowalk(modPath, entries => {
-    result = result.concat(entries);
-  });
+  try {
+    await turbowalk(modPath, entries => {
+      result = result.concat(entries);
+    });
+  } catch (err) {
+    if (['ENOTFOUND', 'ENOENT'].indexOf(err.code) === -1) {
+      log('error', 'Failed to list files',
+        { path: modPath, error: err.message });
+    }
+  }
+
   return result;
 }
 
