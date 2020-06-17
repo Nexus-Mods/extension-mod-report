@@ -273,7 +273,7 @@ async function createReport(api: types.IExtensionApi, modId: string) {
     const state = api.getState();
     const gameMode = selectors.activeGameId(state);
     const mod = state.persistent.mods[gameMode][modId];
-    const modName = util.renderModName(mod);
+    const modName = util.renderModName(mod).substr(0, 64);
     api.sendNotification({
       ...PROGRESS_NOTIFICATION,
       id: `mod-report-creation-${modId}`,
