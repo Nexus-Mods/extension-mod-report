@@ -105,8 +105,8 @@ async function fileReport(api: types.IExtensionApi,
     }
   };
 
-  const conlim = new util.ConcurrencyLimiter(100,
-    (err: Error) => err['code'] === 'EMFILE');
+  const conlim = new util.ConcurrencyLimiter(50,
+    (err: Error) => ['EMFILE', 'EBADF'].includes(err['code']));
   return Promise.all(fileListFiles
     .map(async (entry: IEntry): Promise<IFileEntry> => {
       const relPath = path.relative(modPath, entry.filePath);
