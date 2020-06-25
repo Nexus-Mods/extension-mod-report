@@ -233,7 +233,7 @@ async function createReportImpl(api: types.IExtensionApi,
   if (isBethesdaGame(gameId)) {
     result.plugins = await pluginReport(api, gameId, mod, fileList);
     const loadOrder = (state as any).loadOrder;
-    result.loadOrder = Object.keys(loadOrder)
+    result.loadOrder = Object.keys(loadOrder || {})
       .filter(entry => loadOrder[entry].enabled)
       .sort((lhs, rhs) => loadOrder[lhs].loadOrder - loadOrder[rhs].loadOrder)
       .map(entry => ({ name: entry, enabled: true }));
@@ -241,7 +241,7 @@ async function createReportImpl(api: types.IExtensionApi,
     const profile: types.IProfile = selectors.activeProfile(state);
     const loadOrder = util.getSafe(state, ['persistent', 'loadOrder', profile.id], undefined);
     if (!!loadOrder) {
-      result.loadOrder = Object.keys(loadOrder)
+      result.loadOrder = Object.keys(loadOrder || {})
         .sort((lhs, rhs) => loadOrder[lhs].pos - loadOrder[rhs].pos)
         .map(entry => ({
           name: entry,
