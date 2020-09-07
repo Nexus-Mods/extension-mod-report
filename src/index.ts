@@ -156,8 +156,8 @@ async function pluginReport(api: types.IExtensionApi,
     const name: string = path.basename(plugin.filePath);
     return {
       name,
-      loadOrder: loadOrder[name.toLowerCase()]?.loadOrder || -1,
-      enabled: loadOrder[name.toLowerCase()]?.enabled || false,
+      loadOrder: loadOrder?.[name.toLowerCase()]?.loadOrder || -1,
+      enabled: loadOrder?.[name.toLowerCase()]?.enabled || false,
     };
   }));
 }
