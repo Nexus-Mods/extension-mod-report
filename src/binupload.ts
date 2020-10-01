@@ -2,7 +2,7 @@ import Base58 = require('bs58');
 import * as crypto from 'crypto';
 import * as http from 'http';
 import * as https from 'https';
-import { util } from 'vortex-api';
+import { log, util } from 'vortex-api';
 import { deflateRaw } from 'zlib';
 import format, { FormatterMarkdown } from './format';
 import { IReport } from './IReport';
@@ -134,11 +134,17 @@ async function binUpload(report: IReport): Promise<{ id: string, url: string }> 
     },
   };
   response = await doRequest(request);
-  const parsed: IPrivateBinResponse = JSON.parse(response);
-  return {
-    id: parsed.pasteId,
-    url: `https://${PRIVATEBIN_HOST}${parsed.url}#${Base58.encode(password)}`,
-  };
+  try {
+    const parsed: IPrivateBinResponse = JSON.parse(response);
+    return {
+      id: parsed.pasteId,
+      url: `https://${PRIVATEBIN_HOST}${parsed.url}#${Base58.encode(password)}`,
+    };
+  } catch (err) {
+    log('warn', 'upload to privatebin failed', { response });
+    err['attachLogOnReport'] = true;
+    throw err;
+  }
 }
 
 export default binUpload;
