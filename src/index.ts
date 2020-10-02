@@ -113,16 +113,21 @@ async function fileReport(api: types.IExtensionApi,
       const manifestEntry = manifestLookup[relPath.toUpperCase()];
       let md5sum: string;
       let errCode: string;
-      try {
-        if (generateMD5) {
-          md5sum = await conlim.do(async () =>
-            fileMD5(path.join(deployTarget, manifestEntry.relPath)));
-        } else {
-          md5sum = 'Not calculated';
+      if (manifestEntry !== undefined) {
+        try {
+          if (generateMD5) {
+            md5sum = await conlim.do(async () =>
+              fileMD5(path.join(deployTarget, manifestEntry.relPath)));
+          } else {
+            md5sum = 'Not calculated';
+          }
+        } catch (err) {
+          md5sum = null;
+          errCode = err.code;
         }
-      } catch (err) {
+      } else {
         md5sum = null;
-        errCode = err.code;
+        errCode = 'ENOENT';
       }
       const res: IFileEntry = {
         path: path.relative(modPath, entry.filePath),
