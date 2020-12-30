@@ -278,6 +278,9 @@ async function createReport(api: types.IExtensionApi, modId: string) {
     const state = api.getState();
     const gameMode = selectors.activeGameId(state);
     const mod = state.persistent.mods[gameMode][modId];
+    if (mod === undefined) {
+      throw new util.NotFound(`${modId} has been removed`);
+    }
     const modName = util.renderModName(mod).substr(0, 64);
     api.sendNotification({
       ...PROGRESS_NOTIFICATION,
@@ -327,6 +330,12 @@ async function createReport(api: types.IExtensionApi, modId: string) {
     api.dismissNotification('mod-report-creation');
     if (err instanceof util.ProcessCanceled) {
       log('info', 'failed to create report', err.message);
+    } else if (err instanceof util.NotFound) {
+      api.sendNotification({
+        type: 'info',
+        message: 'Cannot create report - mod no longer installed',
+        displayMS: 3000,
+      })
     } else {
       api.showErrorNotification('Failed to create mod report', err);
     }
