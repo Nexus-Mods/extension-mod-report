@@ -135,12 +135,17 @@ async function binUpload(report: IReport): Promise<{ id: string, url: string }> 
   };
   response = await doRequest(request);
   try {
-    const parsed: IPrivateBinResponse = JSON.parse(response);
+    // const parsed: IPrivateBinResponse = JSON.parse(response);
+    const parsed: IPrivateBinResponse = JSON.parse('<html></html>');
     return {
       id: parsed.pasteId,
       url: `https://${PRIVATEBIN_HOST}${parsed.url}#${Base58.encode(password)}`,
     };
   } catch (err) {
+    if (err instanceof SyntaxError) {
+      err = new Error('report upload server temporarily unavailable');
+      err['allowReport'] = false;
+    }
     log('warn', 'upload to privatebin failed', { response });
     err['attachLogOnReport'] = true;
     throw err;

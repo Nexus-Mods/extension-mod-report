@@ -335,7 +335,7 @@ async function createReport(api: types.IExtensionApi, modId: string) {
         type: 'info',
         message: 'Cannot create report - mod no longer installed',
         displayMS: 3000,
-      })
+      });
     } else {
       api.showErrorNotification('Failed to create mod report', err);
     }
