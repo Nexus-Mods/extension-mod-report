@@ -171,7 +171,7 @@ function isBethesdaGame(gameId: string): boolean {
   return [
     'fallout3', 'falloutnv', 'fallout4', 'fallout4vr',
     'oblivion', 'skyrim', 'skyrimse', 'skyrimvr',
-    'fallout76',
+    'fallout76', 'enderal', 'enderalspecialedition',
   ].includes(gameId);
 }
 
