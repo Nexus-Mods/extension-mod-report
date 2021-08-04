@@ -77,7 +77,7 @@ async function fileReport(api: types.IExtensionApi,
   const modPath = path.join(stagingPath, mod.installationPath);
   const deployTarget = selectors.modPathsForGame(state, gameId)[mod.type];
   if (deployTarget === undefined) {
-    throw new Error(`invalid mod type ${mod.type}`);
+    return Promise.resolve([]);
   }
 
   const manifestLookup: { [relPath: string]: types.IDeployedFile } =
