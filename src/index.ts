@@ -3,7 +3,7 @@ import * as path from 'path';
 import turbowalk, { IEntry } from 'turbowalk';
 import { fs, log, selectors, types, util } from 'vortex-api';
 import binUpload from './binupload';
-import format, { FormatterMarkdown, FormatterReadable } from './format';
+import format, { FormatterBBCode, FormatterReadable } from './format';
 import { IFileEntry, IPluginEntry, IReport } from './IReport';
 
 const WARN_CHECKSUM_FILES = 100;
@@ -65,6 +65,10 @@ async function listFiles(modPath: string): Promise<IEntry[]> {
   return result;
 }
 
+function makeNotificationId(modId: string) {
+  return `mod-report-creation-${modId}`;
+}
+
 async function fileReport(api: types.IExtensionApi,
                           gameId: string,
                           mod: types.IMod,
@@ -97,7 +101,7 @@ async function fileReport(api: types.IExtensionApi,
     if (newPerc !== lastPerc) {
       api.sendNotification({
         ...PROGRESS_NOTIFICATION,
-        id: `mod-report-creation-${mod.id}`,
+        id: makeNotificationId(mod.id),
         message: modName,
         progress: newPerc,
       });
@@ -199,7 +203,7 @@ async function createReportImpl(api: types.IExtensionApi,
       archiveName: download?.localPath || 'N/A',
       managedGame: gameId,
       intendedGame: (download?.game || ['N/A']).join(', '),
-      deploymentMethod: manifest.deploymentMethod || 'N/A',
+      deploymentMethod: manifest.deploymentMethod || 'Default',
       deploymentTime: (manifest as any).deploymentTime || 0,
       modType: mod.type || 'default',
       source: mod.attributes?.source || 'N/A',
@@ -273,25 +277,62 @@ function formatTime(input: Date): string {
   ].join('-');
 }
 
-async function createReport(api: types.IExtensionApi, modId: string) {
+async function displayReport(api: types.IExtensionApi, modId: string, gameId?: string) {
   try {
     const state = api.getState();
-    const gameMode = selectors.activeGameId(state);
-    const mod = state.persistent.mods[gameMode][modId];
+    if (gameId === undefined) {
+      gameId = selectors.activeGameId(state);
+    }
+    const mod = state.persistent.mods[gameId][modId];
     if (mod === undefined) {
       throw new util.NotFound(`${modId} has been removed`);
     }
-    const modName = util.renderModName(mod).substr(0, 64);
+    const report = await createReportImpl(api, gameId, modId);
+    api.dismissNotification(makeNotificationId(modId));
+    const bbcode = format(new FormatterBBCode(), report);
+    api.showDialog('info', util.renderModName(mod), {
+      bbcode,
+    }, [
+      { label: 'Close' },
+    ]);
+  } catch (err) {
+    api.dismissNotification('mod-report-creation');
+    if (err instanceof util.ProcessCanceled) {
+      log('info', 'failed to create report', err.message);
+    } else if (err instanceof util.NotFound) {
+      api.sendNotification({
+        type: 'info',
+        message: 'Cannot create report - mod no longer installed',
+        displayMS: 3000,
+      });
+    } else {
+      api.showErrorNotification('Failed to create mod report', err);
+    }
+  }
+}
+
+async function createReport(api: types.IExtensionApi, modId: string, gameId?: string) {
+  const notiId = makeNotificationId(modId);
+  try {
+    const state = api.getState();
+    if (gameId === undefined) {
+      gameId = selectors.activeGameId(state);
+    }
+    const mod = state.persistent.mods[gameId][modId];
+    if (mod === undefined) {
+      throw new util.NotFound(`${modId} has been removed`);
+    }
+    const modName = util.renderModName(mod).substring(0, 64);
     api.sendNotification({
       ...PROGRESS_NOTIFICATION,
-      id: `mod-report-creation-${modId}`,
+      id: notiId,
       message: modName,
       progress: 0,
     });
-    const report = await createReportImpl(api, gameMode, modId);
+    const report = await createReportImpl(api, gameId, modId);
     const timestamp = new Date();
     api.sendNotification({
-      id: `mod-report-creation-${modId}`,
+      id: notiId,
       type: 'success',
       title: 'Report created',
       message: modName,
@@ -327,7 +368,7 @@ async function createReport(api: types.IExtensionApi, modId: string) {
       ],
     });
   } catch (err) {
-    api.dismissNotification('mod-report-creation');
+    api.dismissNotification(notiId);
     if (err instanceof util.ProcessCanceled) {
       log('info', 'failed to create report', err.message);
     } else if (err instanceof util.NotFound) {
@@ -351,6 +392,15 @@ function init(context: types.IExtensionContext) {
       const gameMode = selectors.activeGameId(state);
       return state.persistent.mods[gameMode]?.[instanceIds[0]] !== undefined;
     });
+  context.once(() => {
+    context.api.events.on('display-report', (modId: string, gameId?: string) => {
+      const state = context.api.getState();
+      if (gameId === undefined) {
+        gameId = selectors.activeGameId(state);
+      }
+      displayReport(context.api, modId, gameId);
+    });
+  });
 }
 
 export default init;

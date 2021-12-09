@@ -129,6 +129,58 @@ export class FormatterMarkdown implements IFormatter {
   }
 }
 
+export class FormatterBBCode implements IFormatter {
+  public section(summary: string, content: string | string[]): string {
+    if (Array.isArray(content)) {
+      return `${summary} (${content.length})`
+        + '[br][/br]'
+        + `${this.lines(content)}`
+        + '[br][/br]'
+        ;
+    } else {
+      return `${summary}[br][/br]${content}[br][/br]`;
+    }
+  }
+
+  public lines(items: string[]): string {
+    if (items.length === 0) {
+      return this.em('None');
+    }
+    return items.join('[br][/br]');
+  }
+
+  public list(items: string[]): string {
+    if (items.length === 0) {
+      return this.em('None');
+    }
+    return `[list]${items.map(item => `[*]${item}`).join('\n')}[/list]`;
+  }
+
+  public preformatted(input: string): string {
+    return `[br][/br][pre]${input}[/pre][br][/br]`;
+  }
+
+  public strong(input: string): string {
+    return `[b]${input}[/b]`;
+  }
+
+  public em(input: string): string {
+    return `[i]${input}[/i]`;
+  }
+
+  public header(input: string): string {
+    return `[b][size=12]${input}[/size][/b]`;
+  }
+
+  public code(input: string): string {
+    return `[code=inline]${input}[/code]`;
+  }
+
+  public escape(input: string): string {
+    return input.replace(/[\[\]]/g, m => `\\${m}`);
+  }
+}
+
 function format(formatter: IFormatter, input: IReport): string {
   const fileList = (filter: (file: IFileEntry) => boolean, print: (file: IFileEntry) => string) => {
     return input.files.filter(filter).map(print);
