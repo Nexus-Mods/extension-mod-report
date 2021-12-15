@@ -5,6 +5,7 @@ import { fs, log, selectors, types, util } from 'vortex-api';
 import binUpload from './binupload';
 import format, { FormatterBBCode, FormatterReadable } from './format';
 import { IFileEntry, IPluginEntry, IReport } from './IReport';
+import { IReportOptions } from './types';
 
 const WARN_CHECKSUM_FILES = 100;
 
@@ -123,7 +124,7 @@ async function fileReport(api: types.IExtensionApi,
             md5sum = await conlim.do(async () =>
               fileMD5(path.join(deployTarget, manifestEntry.relPath)));
           } else {
-            md5sum = 'Not calculated';
+            md5sum = 'Hash not calculated';
           }
         } catch (err) {
           md5sum = null;
@@ -181,7 +182,8 @@ function isBethesdaGame(gameId: string): boolean {
 
 async function createReportImpl(api: types.IExtensionApi,
                                 gameId: string,
-                                modId: string): Promise<IReport> {
+                                modId: string,
+                                options?: IReportOptions): Promise<IReport> {
   const state = api.getState();
   const mod = state.persistent.mods[gameId]?.[modId];
   if (mod === undefined) {
@@ -220,8 +222,8 @@ async function createReportImpl(api: types.IExtensionApi,
   const stagingPath = selectors.installPathForGame(state, gameId);
   const fileList = await listFiles(path.join(stagingPath, mod.installationPath));
 
-  let generateMD5: boolean = true;
-  if (fileList.length > WARN_CHECKSUM_FILES) {
+  let generateMD5: boolean = options?.hashes !== false;
+  if (generateMD5 && (fileList.length > WARN_CHECKSUM_FILES)) {
     const dialogResult: types.IDialogResult = await api.showDialog('question', 'Large number of files', {
       text: 'This mod contains a large number of files, calculating checksums for each '
           + 'may take a while, but without them the report is slightly less useful.',
@@ -239,28 +241,30 @@ async function createReportImpl(api: types.IExtensionApi,
 
   result.files = await fileReport(api, gameId, mod, fileList, manifest, generateMD5);
 
-  if (isBethesdaGame(gameId)) {
-    result.plugins = await pluginReport(api, gameId, mod, fileList);
-    const loadOrder = (state as any).loadOrder;
-    result.loadOrder = Object.keys(loadOrder || {})
-      .filter(entry => loadOrder[entry].enabled)
-      .sort((lhs, rhs) => loadOrder[lhs].loadOrder - loadOrder[rhs].loadOrder)
-      .map(entry => ({ name: entry, enabled: true }));
-  } else {
-    const profile: types.IProfile = selectors.activeProfile(state);
-    const loadOrder = util.getSafe(state, ['persistent', 'loadOrder', profile.id], undefined);
-    if (!!loadOrder) {
+  if (options?.loadOrder !== false) {
+    if (isBethesdaGame(gameId)) {
+      result.plugins = await pluginReport(api, gameId, mod, fileList);
+      const loadOrder = (state as any).loadOrder;
       result.loadOrder = Object.keys(loadOrder || {})
-        .sort((lhs, rhs) => loadOrder[lhs].pos - loadOrder[rhs].pos)
-        .map(entry => ({
-          name: entry,
-          // KCD and Spyro (probably others too) do not include the
-          //  enabled property; in their case, merely their presence in the LO
-          //  suggests that the mod is enabled.
-          enabled: loadOrder[entry]?.enabled || true,
-          locked: loadOrder[entry]?.locked,
-          external: loadOrder[entry]?.external,
-        }));
+        .filter(entry => loadOrder[entry].enabled)
+        .sort((lhs, rhs) => loadOrder[lhs].loadOrder - loadOrder[rhs].loadOrder)
+        .map(entry => ({ name: entry, enabled: true }));
+    } else {
+      const profile: types.IProfile = selectors.activeProfile(state);
+      const loadOrder = util.getSafe(state, ['persistent', 'loadOrder', profile.id], undefined);
+      if (!!loadOrder) {
+        result.loadOrder = Object.keys(loadOrder || {})
+          .sort((lhs, rhs) => loadOrder[lhs].pos - loadOrder[rhs].pos)
+          .map(entry => ({
+            name: entry,
+            // KCD and Spyro (probably others too) do not include the
+            //  enabled property; in their case, merely their presence in the LO
+            //  suggests that the mod is enabled.
+            enabled: loadOrder[entry]?.enabled || true,
+            locked: loadOrder[entry]?.locked,
+            external: loadOrder[entry]?.external,
+          }));
+      }
     }
   }
 
@@ -277,7 +281,8 @@ function formatTime(input: Date): string {
   ].join('-');
 }
 
-async function displayReport(api: types.IExtensionApi, modId: string, gameId?: string) {
+async function displayReport(api: types.IExtensionApi, modId: string,
+                             gameId?: string, options?: IReportOptions) {
   try {
     const state = api.getState();
     if (gameId === undefined) {
@@ -287,7 +292,7 @@ async function displayReport(api: types.IExtensionApi, modId: string, gameId?: s
     if (mod === undefined) {
       throw new util.NotFound(`${modId} has been removed`);
     }
-    const report = await createReportImpl(api, gameId, modId);
+    const report = await createReportImpl(api, gameId, modId, options);
     api.dismissNotification(makeNotificationId(modId));
     const bbcode = format(new FormatterBBCode(), report);
     api.showDialog('info', util.renderModName(mod), {
@@ -393,13 +398,14 @@ function init(context: types.IExtensionContext) {
       return state.persistent.mods[gameMode]?.[instanceIds[0]] !== undefined;
     });
   context.once(() => {
-    context.api.events.on('display-report', (modId: string, gameId?: string) => {
-      const state = context.api.getState();
-      if (gameId === undefined) {
-        gameId = selectors.activeGameId(state);
-      }
-      displayReport(context.api, modId, gameId);
-    });
+    context.api.events.on('display-report',
+      (modId: string, gameId?: string, options?: IReportOptions) => {
+        const state = context.api.getState();
+        if (gameId === undefined) {
+          gameId = selectors.activeGameId(state);
+        }
+        displayReport(context.api, modId, gameId, options);
+      });
   });
 }
 
