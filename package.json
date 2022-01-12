@@ -6,19 +6,22 @@
   "license": "GPL-3.0",
   "author": "Black Tree Gaming Ltd.",
   "scripts": {
-    "webpack": "node ./node_modules/webpack/bin/webpack --config webpack.config.js --display-error-details --progress --profile --color",
+    "webpack": "node ./node_modules/webpack/bin/webpack --config webpack.config.js --progress --profile --color",
     "build": "npm run webpack && extractInfo"
   },
   "devDependencies": {
     "@types/node": "^11.10.5",
     "bs58": "^4.0.1",
     "electron": "^16.0.6",
-    "fork-ts-checker-webpack-plugin": "^1.5.0",
-    "ts-loader": "^7.0.3",
+    "fork-ts-checker-webpack-plugin": "^6.5.0",
+    "ts-loader": "^9.2.6",
     "turbowalk": "Nexus-Mods/node-turbowalk",
     "typescript": "^4.4.3",
     "vortex-api": "Nexus-Mods/vortex-api",
-    "webpack": "^4.43.0",
-    "webpack-cli": "^3.3.11"
+    "webpack": "^5.66.0",
+    "webpack-cli": "^4.9.1"
+  },
+  "resolutions": {
+    "node-gyp": "^8.4.1"
   }
 }
