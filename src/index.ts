@@ -346,7 +346,8 @@ async function createReport(api: types.IExtensionApi, modId: string, gameId?: st
           title: 'Save to file', action: async () => {
             const modReportsPath = path.join(util.getVortexPath('temp'), 'mod reports');
             await fs.ensureDirWritableAsync(modReportsPath, () => Promise.resolve());
-            const tmpPath = path.join(modReportsPath, `${modName}__${formatTime(timestamp)}.txt`);
+            const sanitizedModName = util.sanitizeFilename(modName);
+            const tmpPath = path.join(modReportsPath, `${sanitizedModName}__${formatTime(timestamp)}.txt`);
             const formatted = format(new FormatterReadable(), report);
             await fs.writeFileAsync(tmpPath, formatted);
             util.opn(modReportsPath).catch(() => null);
