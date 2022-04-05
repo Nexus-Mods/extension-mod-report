@@ -135,8 +135,7 @@ async function binUpload(report: IReport): Promise<{ id: string, url: string }> 
   };
   response = await doRequest(request);
   try {
-    // const parsed: IPrivateBinResponse = JSON.parse(response);
-    const parsed: IPrivateBinResponse = JSON.parse('<html></html>');
+    const parsed: IPrivateBinResponse = JSON.parse(response);
     return {
       id: parsed.pasteId,
       url: `https://${PRIVATEBIN_HOST}${parsed.url}#${Base58.encode(password)}`,
