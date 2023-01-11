@@ -25,13 +25,17 @@ jobs:
         architecture: x64
     - run: npm install
     - run: npm run build
+    - uses: actions/checkout@v2
+    - uses: vimtor/action-zip@v1
+      with:
+        files: dist/
+        dest: mod-report.zip
     - name: zip extension
       run: |
         cd dist
         zip ../mod-report.zip *
     - name: Release
       uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/')
       with:
         files: |
           mod-report.zip
