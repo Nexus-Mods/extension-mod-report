@@ -29,11 +29,12 @@ jobs:
     - uses: vimtor/action-zip@v1
       with:
         files: dist/
+        recursive: false
         dest: mod-report.zip
-    - name: zip extension
-      run: |
-        cd dist
-        zip ../mod-report.zip *
+    - uses: actions/upload-artifact@v3
+      with:
+        name: artifact
+        path: ${{ github.workspace }}/mod-report.zip
     - name: Release
       uses: softprops/action-gh-release@v1
       with:
