@@ -16,7 +16,7 @@
     "fork-ts-checker-webpack-plugin": "^6.5.0",
     "ts-loader": "^9.2.6",
     "turbowalk": "Nexus-Mods/node-turbowalk",
-    "typescript": "^4.4.3",
+    "typescript": "^4.9.5",
     "vortex-api": "Nexus-Mods/vortex-api",
     "webpack": "^5.66.0",
     "webpack-cli": "^4.9.1"
