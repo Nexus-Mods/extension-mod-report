@@ -4,10 +4,9 @@ import * as http from 'http';
 import * as https from 'https';
 import { log, util } from 'vortex-api';
 import { deflateRaw } from 'zlib';
+import { PRIVATEBIN_HOST } from './constants';
 import format, { FormatterMarkdown } from './format';
 import { IReport } from './IReport';
-
-const PRIVATEBIN_HOST = 'privatebin.nexusmods.com';
 
 type Encryption = 'aes';
 type EncryptionMode = 'ctr' | 'cbc' | 'gcm';
